@@ -166,7 +166,8 @@ function openExercise(name){
  let streak='—';
  if(last){const same=logs.filter(x=>x.weight===last.weight); streak=weeksSince(same[0].date)+' settimane';}
  document.getElementById('exercise').innerHTML=`<div class="card">
- <div class="row between"><div><h2>${esc(name)}</h2><div class="muted">Progressione</div></div><button onclick="logExercise('${esc(name).replaceAll("'","&#39;")}')">+ Registra</button></div>
+ <div class="row between" style="flex-wrap:wrap"><button class="secondary" onclick="show('workout')">← Allenamento</button><button onclick="logExercise('${esc(name).replaceAll("'","&#39;")}')">+ Registra</button></div>
+ <h2 style="margin-bottom:4px">${esc(name)}</h2><div class="muted">Progressione</div>
  <div class="grid" style="margin-top:12px">
   <div><div class="stat">${last?last.weight+' kg':'—'}</div><div class="statlabel">peso attuale</div></div>
   <div><div class="stat">${streak}</div><div class="statlabel">sullo stesso peso</div></div>
@@ -181,7 +182,7 @@ function renderSettings(){
  <button style="width:100%" onclick="exportData()">Esporta backup</button>
  <label style="margin-top:14px">Ripristina backup</label><input type="file" accept=".json" onchange="importData(this)">
  <button class="danger" style="width:100%;margin-top:18px" onclick="resetData()">Cancella tutti i dati</button></div>
- <div class="card"><h3>Versione</h3><div class="muted">Palestra Tracker 2.0 — gestione schede ed esercizi</div></div>`;
+ <div class="card"><h3>Versione</h3><div class="muted">Palestra Tracker 2.1 — navigazione storico</div></div>`;
 }
 function exportData(){const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-palestra.json';a.click();}
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{db=JSON.parse(r.result);save();alert('Backup ripristinato.');show('home')}catch(e){alert('File non valido.')}};r.readAsText(f);}
