@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.json">
+<title>Palestra — Progressi</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Inter,Arial,sans-serif;color:#111827;background:#f3f4f6}
+*{box-sizing:border-box}body{margin:0;background:#f3f4f6}
+header{position:sticky;top:0;z-index:5;background:#111827;color:white;padding:18px 16px calc(14px + env(safe-area-inset-top));padding-top:calc(14px + env(safe-area-inset-top))}
+h1{font-size:24px;margin:0 0 3px}header small{opacity:.7}
+main{max-width:760px;margin:auto;padding:14px 14px 90px}
+.card{background:white;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0000000d}
+.row{display:flex;gap:10px;align-items:center}.between{justify-content:space-between}
+button,input,select,textarea{font:inherit}button{border:0;border-radius:12px;padding:11px 14px;background:#111827;color:white;font-weight:600}
+button.secondary{background:#e5e7eb;color:#111827}button.danger{background:#fee2e2;color:#991b1b}
+input,select,textarea{width:100%;border:1px solid #d1d5db;border-radius:11px;padding:10px;background:white}
+label{font-size:13px;font-weight:700;color:#4b5563;display:block;margin:8px 0 5px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.exercise{padding:14px;border:1px solid #e5e7eb;border-radius:14px;margin:8px 0}
+.exercise b{font-size:16px}.muted{color:#6b7280;font-size:13px}.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef2ff;font-size:12px;font-weight:700}
+nav{position:fixed;bottom:0;left:0;right:0;background:#ffffffed;backdrop-filter:blur(10px);border-top:1px solid #e5e7eb;padding:8px 10px calc(8px + env(safe-area-inset-bottom));display:flex;justify-content:space-around;z-index:10}
+nav button{background:none;color:#6b7280;padding:7px 10px}.active{color:#111827!important}
+.hidden{display:none}.sets{width:100%;border-collapse:collapse;margin-top:10px}.sets td,.sets th{padding:8px 4px;border-bottom:1px solid #eee;text-align:center;font-size:13px}
+.stat{font-size:25px;font-weight:800}.statlabel{font-size:12px;color:#6b7280}
+.empty{text-align:center;color:#6b7280;padding:28px 10px}
+a{color:inherit}
+</style>
+</head>
+<body>
+<header><h1>🏋️ Palestra</h1><small>Il tuo diario di progressione</small></header>
+<main>
+<section id="home"></section>
+<section id="workout" class="hidden"></section>
+<section id="exercise" class="hidden"></section>
+<section id="settings" class="hidden"></section>
+</main>
+<nav>
+<button id="navHome" onclick="show('home')">🏠<br><small>Home</small></button>
+<button id="navWorkout" onclick="show('workout')">🏋️<br><small>Allenamento</small></button>
+<button id="navSettings" onclick="show('settings')">⚙️<br><small>Dati</small></button>
+</nav>
+<script>
+const KEY='palestra_tracker_v1';
+let db=JSON.parse(localStorage.getItem(KEY)||'null')||{workouts:[],logs:[]};
+let currentExercise=null;
+
+function save(){localStorage.setItem(KEY,JSON.stringify(db));}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+function dateIt(iso){return new Date(iso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});}
+function weeksSince(iso){return Math.max(0,Math.floor((Date.now()-new Date(iso))/604800000));}
+function workoutExercises(w){return w.exercises||[]}
+function allExercises(){return db.workouts.flatMap(w=>w.exercises.map(e=>({...e,workout:w.name,workoutId:w.id})));}
+function lastLog(name){return [...db.logs].filter(x=>x.exercise===name).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];}
+
+function show(id){
+ document.querySelectorAll('main>section').forEach(s=>s.classList.add('hidden'));
+ document.getElementById(id).classList.remove('hidden');
+ document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+ document.getElementById('nav'+id.charAt(0).toUpperCase()+id.slice(1))?.classList.add('active');
+ if(id==='home')renderHome(); if(id==='workout')renderWorkout(); if(id==='settings')renderSettings();
+}
+function renderHome(){
+ const ex=allExercises(), logs=[...db.logs].sort((a,b)=>new Date(b.date)-new Date(a.date));
+ document.getElementById('home').innerHTML=`
+ <div class="grid">
+  <div class="card"><div class="stat">${db.workouts.length}</div><div class="statlabel">schede</div></div>
+  <div class="card"><div class="stat">${logs.length}</div><div class="statlabel">allenamenti registrati</div></div>
+ </div>
+ <div class="card"><div class="row between"><h2>Ultimi esercizi</h2><button onclick="show('workout')">Apri</button></div>
+ ${ex.length?ex.slice(0,8).map(e=>{
+   const l=lastLog(e.name); return `<div class="exercise" onclick="openExercise('${esc(e.name).replaceAll("'","&#39;")}')"><div class="row between"><b>${esc(e.name)}</b><span class="pill">${l?esc(l.weight)+' kg':'mai'}</span></div><div class="muted">${l?dateIt(l.date)+' · '+l.sets.map(s=>s.reps+' rep').join(' / '):'Nessun dato ancora'}</div></div>`
+ }).join(''):'<div class="empty">Non hai ancora creato esercizi.<br>Vai su Allenamento per iniziare.</div>'}
+ </div>
+ <div class="card"><h2>Come usarla</h2><p class="muted">Crea le tue schede, aggiungi gli esercizi e, dopo ogni allenamento, registra peso e ripetizioni. L'app calcola automaticamente lo storico e da quante settimane sei sullo stesso peso.</p></div>`;
+}
+function renderWorkout(){
+ document.getElementById('workout').innerHTML=`
+ <div class="card"><div class="row between"><h2>Le mie schede</h2><button onclick="addWorkout()">+ Scheda</button></div>
+ ${db.workouts.length?db.workouts.map(w=>`<div class="exercise"><div class="row between"><b>${esc(w.name)}</b><button class="secondary" onclick="addExercise('${w.id}')">+ esercizio</button></div>
+ ${w.exercises.length?w.exercises.map(e=>`<div class="row between" style="margin-top:10px"><span onclick="openExercise('${esc(e.name).replaceAll("'","&#39;")}')" style="flex:1">${esc(e.name)}</span><button class="secondary" onclick="logExercise('${esc(e.name).replaceAll("'","&#39;")}')">Registra</button></div>`).join(''):'<div class="muted" style="margin-top:10px">Nessun esercizio</div>'}</div>`).join(''):'<div class="empty">Crea la prima scheda.</div>'}
+ </div>`;
+}
+function addWorkout(){
+ const name=prompt('Nome della scheda (es. A — Petto/Dorso)');
+ if(!name)return; db.workouts.push({id:crypto.randomUUID(),name:name.trim(),exercises:[]}); save(); renderWorkout();
+}
+function addExercise(wid){
+ const name=prompt('Nome esercizio');
+ if(!name)return; const w=db.workouts.find(x=>x.id===wid); if(w){w.exercises.push({id:crypto.randomUUID(),name:name.trim()});save();renderWorkout();}
+}
+function logExercise(name){
+ currentExercise=name;
+ const l=lastLog(name);
+ document.getElementById('exercise').innerHTML=`<div class="card">
+ <div class="row between"><div><h2>${esc(name)}</h2><div class="muted">Nuovo allenamento</div></div><button class="secondary" onclick="show('workout')">Indietro</button></div>
+ <label>Data</label><input id="logDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+ <label>Peso (kg)</label><input id="logWeight" type="number" inputmode="decimal" step="0.1" value="${l?esc(l.weight):''}" placeholder="es. 50">
+ <label>Serie e ripetizioni</label>
+ <div id="setRows">${[0,1,2].map((i)=>`<div class="row" style="margin:7px 0"><span style="width:35px">${i+1}</span><input class="reps" type="number" inputmode="numeric" placeholder="rip." value="${l?.sets?.[i]?.reps||''}"><input class="rir" type="number" inputmode="numeric" placeholder="RIR (opz.)" value="${l?.sets?.[i]?.rir??''}"><button class="secondary" onclick="this.parentElement.remove()">×</button></div>`).join('')}</div>
+ <button class="secondary" onclick="addSet()">+ Serie</button>
+ <label>Note</label><textarea id="logNote" rows="3" placeholder="Tecnica, sensazioni, macchina..."></textarea>
+ <button style="width:100%;margin-top:14px" onclick="saveLog()">Salva allenamento</button>
+ </div>`;
+ show('exercise');
+}
+function addSet(){
+ const n=document.querySelectorAll('#setRows .reps').length+1;
+ document.getElementById('setRows').insertAdjacentHTML('beforeend',`<div class="row" style="margin:7px 0"><span style="width:35px">${n}</span><input class="reps" type="number" inputmode="numeric" placeholder="rip."><input class="rir" type="number" inputmode="numeric" placeholder="RIR (opz.)"><button class="secondary" onclick="this.parentElement.remove()">×</button></div>`);
+}
+function saveLog(){
+ const weight=parseFloat(document.getElementById('logWeight').value);
+ const sets=[...document.querySelectorAll('#setRows .reps')].map((x,i)=>({reps:parseInt(x.value),rir:parseInt(document.querySelectorAll('#setRows .rir')[i].value)})).filter(x=>Number.isFinite(x.reps));
+ if(!Number.isFinite(weight)||!sets.length){alert('Inserisci almeno peso e una serie con ripetizioni.');return;}
+ const d=document.getElementById('logDate').value;
+ db.logs.push({id:crypto.randomUUID(),exercise:currentExercise,date:new Date(d+'T12:00:00').toISOString(),weight,sets,note:document.getElementById('logNote').value});
+ save(); openExercise(currentExercise);
+}
+function openExercise(name){
+ currentExercise=name; const logs=[...db.logs].filter(x=>x.exercise===name).sort((a,b)=>new Date(a.date)-new Date(b.date));
+ const last=logs[logs.length-1];
+ let streak='—';
+ if(last){const same=logs.filter(x=>x.weight===last.weight); streak=weeksSince(same[0].date)+' settimane';}
+ document.getElementById('exercise').innerHTML=`<div class="card">
+ <div class="row between"><div><h2>${esc(name)}</h2><div class="muted">Progressione</div></div><button onclick="logExercise('${esc(name).replaceAll("'","&#39;")}')">+ Registra</button></div>
+ <div class="grid" style="margin-top:12px">
+  <div><div class="stat">${last?last.weight+' kg':'—'}</div><div class="statlabel">peso attuale</div></div>
+  <div><div class="stat">${streak}</div><div class="statlabel">sullo stesso peso</div></div>
+ </div>
+ ${last?`<p><span class="pill">${last.sets.map(s=>s.reps+' rep').join(' / ')}</span></p>`:''}
+ </div>
+ <div class="card"><h3>Storico</h3>${logs.length?`<table class="sets"><tr><th>Data</th><th>Kg</th><th>Ripetizioni</th></tr>${logs.slice().reverse().map(l=>`<tr><td>${dateIt(l.date)}</td><td>${l.weight}</td><td>${l.sets.map(s=>s.reps).join(' / ')}</td></tr>`).join('')}</table>`:'<div class="empty">Nessun allenamento registrato.</div>'}</div>`;
+ show('exercise');
+}
+function renderSettings(){
+ document.getElementById('settings').innerHTML=`<div class="card"><h2>Dati</h2><p class="muted">I dati vengono salvati localmente sul dispositivo/browser. Fai periodicamente un'esportazione per avere un backup.</p>
+ <button style="width:100%" onclick="exportData()">Esporta backup</button>
+ <label style="margin-top:14px">Ripristina backup</label><input type="file" accept=".json" onchange="importData(this)">
+ <button class="danger" style="width:100%;margin-top:18px" onclick="resetData()">Cancella tutti i dati</button></div>
+ <div class="card"><h3>Versione</h3><div class="muted">Palestra Tracker 1.0 — prototipo personale</div></div>`;
+}
+function exportData(){const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-palestra.json';a.click();}
+function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{db=JSON.parse(r.result);save();alert('Backup ripristinato.');show('home')}catch(e){alert('File non valido.')}};r.readAsText(f);}
+function resetData(){if(confirm('Sei sicuro? Cancellerai tutti gli allenamenti e le schede.')){db={workouts:[],logs:[]};save();show('home');}}
+show('home');
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
