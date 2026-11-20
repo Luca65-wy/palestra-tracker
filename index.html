@@ -27,6 +27,7 @@ nav button{background:none;color:#6b7280;padding:7px 10px}.active{color:#111827!
 .stat{font-size:25px;font-weight:800}.statlabel{font-size:12px;color:#6b7280}
 .empty{text-align:center;color:#6b7280;padding:28px 10px}
 a{color:inherit}
+.menu{position:relative;flex-shrink:0}.menu>summary{list-style:none;cursor:pointer;background:#f3f4f6;border-radius:12px;padding:8px 13px;font-size:21px;font-weight:700;line-height:1;min-width:43px;text-align:center}.menu>summary::-webkit-details-marker{display:none}.menu[open]>summary{background:#e5e7eb}.menu-actions{position:absolute;right:0;top:42px;background:white;box-shadow:0 6px 25px #0003;border:1px solid #e5e7eb;border-radius:12px;padding:7px;min-width:155px;z-index:4}.menu-actions button{display:block;width:100%;text-align:left;background:white;color:#111827;padding:11px}.menu-actions button.danger{color:#991b1b;background:white}.exercise-head{min-width:0;flex:1;overflow-wrap:anywhere}.exercise-line{padding:10px 0;border-top:1px solid #eee}.exercise-line:first-of-type{border-top:0}.exercise-desc{white-space:pre-wrap;margin:4px 0 8px}
 </style>
 </head>
 <body>
@@ -77,20 +78,61 @@ function renderHome(){
  <div class="card"><h2>Come usarla</h2><p class="muted">Crea le tue schede, aggiungi gli esercizi e, dopo ogni allenamento, registra peso e ripetizioni. L'app calcola automaticamente lo storico e da quante settimane sei sullo stesso peso.</p></div>`;
 }
 function renderWorkout(){
- document.getElementById('workout').innerHTML=`
- <div class="card"><div class="row between"><h2>Le mie schede</h2><button onclick="addWorkout()">+ Scheda</button></div>
- ${db.workouts.length?db.workouts.map(w=>`<div class="exercise"><div class="row between"><b>${esc(w.name)}</b><button class="secondary" onclick="addExercise('${w.id}')">+ esercizio</button></div>
- ${w.exercises.length?w.exercises.map(e=>`<div class="row between" style="margin-top:10px"><span onclick="openExercise('${esc(e.name).replaceAll("'","&#39;")}')" style="flex:1">${esc(e.name)}</span><button class="secondary" onclick="logExercise('${esc(e.name).replaceAll("'","&#39;")}')">Registra</button></div>`).join(''):'<div class="muted" style="margin-top:10px">Nessun esercizio</div>'}</div>`).join(''):'<div class="empty">Crea la prima scheda.</div>'}
- </div>`;
+ document.getElementById('workout').innerHTML=`<div class="card"><div class="row between"><h2>Le mie schede</h2><button onclick="addWorkout()">+ Scheda</button></div>
+ ${db.workouts.length?db.workouts.map(w=>`<div class="exercise">
+ <div class="row between"><b class="exercise-head">${esc(w.name)}</b><details class="menu"><summary aria-label="Opzioni scheda">⋯</summary><div class="menu-actions"><button onclick="renameWorkout('${w.id}')">✏️ Rinomina</button><button class="danger" onclick="deleteWorkout('${w.id}')">🗑️ Elimina</button></div></details></div>
+ <button class="secondary" style="margin-top:10px" onclick="addExercise('${w.id}')">+ Aggiungi esercizio</button>
+ ${w.exercises.length?w.exercises.map(e=>`<div class="exercise-line"><div class="row between"><div class="exercise-head"><b>${esc(e.name)}</b>${e.description?`<div class="muted exercise-desc">${esc(e.description)}</div>`:''}</div><details class="menu"><summary aria-label="Opzioni esercizio">⋯</summary><div class="menu-actions"><button onclick="editExercise('${w.id}','${e.id}')">✏️ Modifica</button><button class="danger" onclick="deleteExercise('${w.id}','${e.id}')">🗑️ Elimina</button></div></details></div><div class="row" style="margin-top:8px"><button class="secondary" onclick="openExerciseById('${w.id}','${e.id}')">Storico</button><button onclick="logExerciseById('${w.id}','${e.id}')">Registra</button></div></div>`).join(''):'<div class="muted" style="margin-top:10px">Nessun esercizio</div>'}</div>`).join(''):'<div class="empty">Crea la prima scheda.</div>'}</div>`;
 }
 function addWorkout(){
  const name=prompt('Nome della scheda (es. A — Petto/Dorso)');
- if(!name)return; db.workouts.push({id:crypto.randomUUID(),name:name.trim(),exercises:[]}); save(); renderWorkout();
+ if(!name||!name.trim())return;
+ db.workouts.push({id:crypto.randomUUID(),name:name.trim(),exercises:[]});save();renderWorkout();
+}
+function renameWorkout(id){
+ const w=db.workouts.find(x=>x.id===id);if(!w)return;
+ const name=prompt('Nuovo nome della scheda',w.name);
+ if(!name||!name.trim())return;
+ w.name=name.trim();save();renderWorkout();
+}
+function deleteWorkout(id){
+ const w=db.workouts.find(x=>x.id===id);if(!w)return;
+ const names=w.exercises.map(e=>e.name);
+ const unique=names.filter(n=>!db.workouts.some(other=>other.id!==id&&other.exercises.some(e=>e.name===n)));
+ const count=db.logs.filter(l=>unique.includes(l.exercise)).length;
+ if(!confirm(`Eliminare la scheda "${w.name}" e i suoi ${w.exercises.length} esercizi?${count?' Verranno eliminati anche '+count+' allenamenti registrati relativi a esercizi non presenti in altre schede.':''}`))return;
+ db.workouts=db.workouts.filter(x=>x.id!==id);
+ db.logs=db.logs.filter(l=>!unique.includes(l.exercise));
+ save();renderWorkout();
 }
 function addExercise(wid){
- const name=prompt('Nome esercizio');
- if(!name)return; const w=db.workouts.find(x=>x.id===wid); if(w){w.exercises.push({id:crypto.randomUUID(),name:name.trim()});save();renderWorkout();}
+ const w=db.workouts.find(x=>x.id===wid);if(!w)return;
+ const name=prompt('Nome esercizio');if(!name||!name.trim())return;
+ const description=prompt('Descrizione / note sull’esercizio (facoltativa)','');
+ if(description===null)return;
+ if(allExercises().some(e=>e.name.toLowerCase()===name.trim().toLowerCase())){alert('Esiste già un esercizio con questo nome. Usa un nome diverso per non confondere gli storici.');return;}
+ w.exercises.push({id:crypto.randomUUID(),name:name.trim(),description:description.trim()});save();renderWorkout();
 }
+function editExercise(wid,eid){
+ const w=db.workouts.find(x=>x.id===wid);const e=w?.exercises.find(x=>x.id===eid);if(!e)return;
+ const name=prompt('Nome esercizio',e.name);if(!name||!name.trim())return;
+ const description=prompt('Descrizione / note sull’esercizio',e.description||'');if(description===null)return;
+ if(allExercises().some(x=>x.id!==eid&&x.name.toLowerCase()===name.trim().toLowerCase())){alert('Esiste già un esercizio con questo nome. Scegli un nome diverso.');return;}
+ const old=e.name;e.name=name.trim();e.description=description.trim();
+ if(old!==e.name){db.logs.forEach(l=>{if(l.exercise===old)l.exercise=e.name;});if(currentExercise===old)currentExercise=e.name;}
+ save();renderWorkout();
+}
+function deleteExercise(wid,eid){
+ const w=db.workouts.find(x=>x.id===wid);const e=w?.exercises.find(x=>x.id===eid);if(!e)return;
+ const shared=db.workouts.some(other=>other.exercises.some(x=>x.id!==eid&&x.name===e.name));
+ const count=db.logs.filter(l=>l.exercise===e.name).length;
+ if(!confirm(`Eliminare "${e.name}" dalla scheda?${count&&!shared?' Verranno eliminati anche '+count+' allenamenti dal suo storico.':''}`))return;
+ w.exercises=w.exercises.filter(x=>x.id!==eid);
+ if(!shared)db.logs=db.logs.filter(l=>l.exercise!==e.name);
+ save();renderWorkout();
+}
+function openExerciseById(wid,eid){const e=db.workouts.find(x=>x.id===wid)?.exercises.find(x=>x.id===eid);if(e)openExercise(e.name);}
+function logExerciseById(wid,eid){const e=db.workouts.find(x=>x.id===wid)?.exercises.find(x=>x.id===eid);if(e)logExercise(e.name);}
 function logExercise(name){
  currentExercise=name;
  const l=lastLog(name);
@@ -139,7 +181,7 @@ function renderSettings(){
  <button style="width:100%" onclick="exportData()">Esporta backup</button>
  <label style="margin-top:14px">Ripristina backup</label><input type="file" accept=".json" onchange="importData(this)">
  <button class="danger" style="width:100%;margin-top:18px" onclick="resetData()">Cancella tutti i dati</button></div>
- <div class="card"><h3>Versione</h3><div class="muted">Palestra Tracker 1.0 — prototipo personale</div></div>`;
+ <div class="card"><h3>Versione</h3><div class="muted">Palestra Tracker 2.0 — gestione schede ed esercizi</div></div>`;
 }
 function exportData(){const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-palestra.json';a.click();}
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{db=JSON.parse(r.result);save();alert('Backup ripristinato.');show('home')}catch(e){alert('File non valido.')}};r.readAsText(f);}
