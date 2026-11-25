@@ -28,6 +28,7 @@ nav button{background:none;color:#6b7280;padding:7px 10px}.active{color:#111827!
 .empty{text-align:center;color:#6b7280;padding:28px 10px}
 a{color:inherit}
 .menu{position:relative;flex-shrink:0}.menu>summary{list-style:none;cursor:pointer;background:#f3f4f6;border-radius:12px;padding:8px 13px;font-size:21px;font-weight:700;line-height:1;min-width:43px;text-align:center}.menu>summary::-webkit-details-marker{display:none}.menu[open]>summary{background:#e5e7eb}.menu-actions{position:absolute;right:0;top:42px;background:white;box-shadow:0 6px 25px #0003;border:1px solid #e5e7eb;border-radius:12px;padding:7px;min-width:155px;z-index:4}.menu-actions button{display:block;width:100%;text-align:left;background:white;color:#111827;padding:11px}.menu-actions button.danger{color:#991b1b;background:white}.exercise-head{min-width:0;flex:1;overflow-wrap:anywhere}.exercise-line{padding:10px 0;border-top:1px solid #eee}.exercise-line:first-of-type{border-top:0}.exercise-desc{white-space:pre-wrap;margin:4px 0 8px}
+.history-series{display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:7px}.series-tile{background:#f3f4f6;border-radius:10px;padding:9px;text-align:center}.history-note{background:#f3f4f6;border-radius:10px;padding:12px;margin-top:12px;overflow-wrap:anywhere}.history-note div{white-space:pre-wrap;margin-top:6px;font-size:14px}
 </style>
 </head>
 <body>
@@ -47,6 +48,7 @@ a{color:inherit}
 const KEY='palestra_tracker_v1';
 let db=JSON.parse(localStorage.getItem(KEY)||'null')||{workouts:[],logs:[]};
 let currentExercise=null;
+let editingLogId=null;
 
 function save(){localStorage.setItem(KEY,JSON.stringify(db));}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
@@ -133,40 +135,44 @@ function deleteExercise(wid,eid){
 }
 function openExerciseById(wid,eid){const e=db.workouts.find(x=>x.id===wid)?.exercises.find(x=>x.id===eid);if(e)openExercise(e.name);}
 function logExerciseById(wid,eid){const e=db.workouts.find(x=>x.id===wid)?.exercises.find(x=>x.id===eid);if(e)logExercise(e.name);}
-function logExercise(name){
- currentExercise=name;
- const l=lastLog(name);
+function logExercise(name, logId=null){
+ currentExercise=name; editingLogId=logId;
+ const editing=logId?db.logs.find(x=>x.id===logId&&x.exercise===name):null;
+ if(logId&&!editing){openExercise(name);return;}
+ const l=editing||lastLog(name);
+ const today=new Date(); const localDate=d=>{const t=new Date(d);return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;};
  document.getElementById('exercise').innerHTML=`<div class="card">
- <div class="row between"><div><h2>${esc(name)}</h2><div class="muted">Nuovo allenamento</div></div><button class="secondary" onclick="show('workout')">Indietro</button></div>
- <label>Data</label><input id="logDate" type="date" value="${new Date().toISOString().slice(0,10)}">
- <label>Peso (kg)</label><input id="logWeight" type="number" inputmode="decimal" step="0.1" value="${l?esc(l.weight):''}" placeholder="es. 50">
- <label>Serie e ripetizioni</label>
- <div id="setRows">${[0,1,2].map((i)=>`<div class="row" style="margin:7px 0"><span style="width:35px">${i+1}</span><input class="reps" type="number" inputmode="numeric" placeholder="rip." value="${l?.sets?.[i]?.reps||''}"><input class="rir" type="number" inputmode="numeric" placeholder="RIR (opz.)" value="${l?.sets?.[i]?.rir??''}"><button class="secondary" onclick="this.parentElement.remove()">×</button></div>`).join('')}</div>
+ <div class="row between"><div><h2>${esc(name)}</h2><div class="muted">${editing?'Modifica allenamento':'Nuovo allenamento'}</div></div><button class="secondary" onclick="openExercise(currentExercise)">Annulla</button></div>
+ <label>Data</label><input id="logDate" type="date" value="${localDate(editing?editing.date:today)}">
+ <label>Peso (kg)</label><input id="logWeight" type="number" inputmode="decimal" min="0" step="any" value="${l?esc(l.weight):''}" placeholder="es. 50">
+ <label>Serie e ripetizioni</label><div id="setRows"></div>
  <button class="secondary" onclick="addSet()">+ Serie</button>
- <label>Note</label><textarea id="logNote" rows="3" placeholder="Tecnica, sensazioni, macchina..."></textarea>
- <button style="width:100%;margin-top:14px" onclick="saveLog()">Salva allenamento</button>
- </div>`;
- show('exercise');
+ <label>Note</label><textarea id="logNote" rows="3" placeholder="Tecnica, sensazioni, macchina...">${esc(editing?.note||'')}</textarea>
+ <button style="width:100%;margin-top:14px" onclick="saveLog()">${editing?'Salva modifiche':'Salva allenamento'}</button></div>`;
+ (l?.sets?.length?l.sets:[{},{},{}]).forEach(x=>addSet(x)); show('exercise');
 }
-function addSet(){
- const n=document.querySelectorAll('#setRows .reps').length+1;
- document.getElementById('setRows').insertAdjacentHTML('beforeend',`<div class="row" style="margin:7px 0"><span style="width:35px">${n}</span><input class="reps" type="number" inputmode="numeric" placeholder="rip."><input class="rir" type="number" inputmode="numeric" placeholder="RIR (opz.)"><button class="secondary" onclick="this.parentElement.remove()">×</button></div>`);
+function renumberSets(){document.querySelectorAll('#setRows .set-number').forEach((x,i)=>x.textContent=i+1);}
+function addSet(s={}){
+ document.getElementById('setRows').insertAdjacentHTML('beforeend',`<div class="row" style="margin:7px 0"><span class="set-number" style="width:25px"></span><input class="reps" type="number" min="0" step="1" inputmode="numeric" placeholder="rip." value="${esc(s.reps??'')}"><input class="rir" type="number" min="0" step="1" inputmode="numeric" placeholder="RIR (opz.)" value="${esc(s.rir??'')}"><button class="secondary" onclick="this.parentElement.remove();renumberSets()">×</button></div>`);renumberSets();
 }
 function saveLog(){
- const weight=parseFloat(document.getElementById('logWeight').value);
- const sets=[...document.querySelectorAll('#setRows .reps')].map((x,i)=>({reps:parseInt(x.value),rir:parseInt(document.querySelectorAll('#setRows .rir')[i].value)})).filter(x=>Number.isFinite(x.reps));
- if(!Number.isFinite(weight)||!sets.length){alert('Inserisci almeno peso e una serie con ripetizioni.');return;}
- const d=document.getElementById('logDate').value;
- db.logs.push({id:crypto.randomUUID(),exercise:currentExercise,date:new Date(d+'T12:00:00').toISOString(),weight,sets,note:document.getElementById('logNote').value});
- save(); openExercise(currentExercise);
+ const raw=document.getElementById('logWeight').value, weight=Number(raw), d=document.getElementById('logDate').value;
+ const sets=[]; for(const row of document.querySelectorAll('#setRows .row')){const r=row.querySelector('.reps').value, q=row.querySelector('.rir').value;if(r===''&&q==='')continue;const reps=Number(r),rir=q===''?null:Number(q);if(r===''||!Number.isInteger(reps)||reps<0||(rir!==null&&(!Number.isInteger(rir)||rir<0))){alert('Controlla ripetizioni e RIR.');return;}sets.push({reps,rir});}
+ if(raw===''||!Number.isFinite(weight)||weight<0||!sets.length||!d||!Number.isFinite(new Date(d+'T12:00:00').getTime())){alert('Inserisci data, peso valido e almeno una serie.');return;}
+ const values={exercise:currentExercise,date:new Date(d+'T12:00:00').toISOString(),weight,sets,note:document.getElementById('logNote').value};
+ if(editingLogId){const i=db.logs.findIndex(x=>x.id===editingLogId&&x.exercise===currentExercise);if(i<0)return;db.logs[i]={...db.logs[i],...values};}else db.logs.push({id:crypto.randomUUID(),...values});
+ editingLogId=null;save();openExercise(currentExercise);
 }
+function editLog(id){logExercise(currentExercise,id);}
+function deleteLog(id){const l=db.logs.find(x=>x.id===id&&x.exercise===currentExercise);if(!l||!confirm('Eliminare solo la registrazione del '+dateIt(l.date)+'?'))return;db.logs=db.logs.filter(x=>x.id!==id);save();openExercise(currentExercise);}
+function historyCard(l){return `<div class="exercise"><div class="row between"><b>${dateIt(l.date)}</b><details class="menu"><summary aria-label="Opzioni registrazione">⋯</summary><div class="menu-actions"><button data-log="${esc(l.id)}" onclick="editLog(this.dataset.log)">✏️ Modifica</button><button class="danger" data-log="${esc(l.id)}" onclick="deleteLog(this.dataset.log)">🗑️ Elimina</button></div></details></div><div class="stat" style="margin:8px 0">${esc(l.weight)} kg</div><div class="history-series">${l.sets.map((s,i)=>`<div class="series-tile"><div class="muted">Serie ${i+1}</div><b>${esc(s.reps)} rep</b>${s.rir!=null?`<div class="muted">RIR ${esc(s.rir)}</div>`:''}</div>`).join('')}</div>${l.note?.trim()?`<div class="history-note"><b>📝 Note</b><div>${esc(l.note)}</div></div>`:''}</div>`;}
 function openExercise(name){
  currentExercise=name; const logs=[...db.logs].filter(x=>x.exercise===name).sort((a,b)=>new Date(a.date)-new Date(b.date));
  const last=logs[logs.length-1];
  let streak='—';
- if(last){const same=logs.filter(x=>x.weight===last.weight); streak=weeksSince(same[0].date)+' settimane';}
+ if(last){let i=logs.length-1;while(i>0&&logs[i-1].weight===last.weight)i--;streak=weeksSince(logs[i].date)+' settimane';}
  document.getElementById('exercise').innerHTML=`<div class="card">
- <div class="row between" style="flex-wrap:wrap"><button class="secondary" onclick="show('workout')">← Allenamento</button><button onclick="logExercise('${esc(name).replaceAll("'","&#39;")}')">+ Registra</button></div>
+ <div class="row between" style="flex-wrap:wrap"><button class="secondary" onclick="show('workout')">← Allenamento</button><button onclick="logExercise(currentExercise)">+ Registra</button></div>
  <h2 style="margin-bottom:4px">${esc(name)}</h2><div class="muted">Progressione</div>
  <div class="grid" style="margin-top:12px">
   <div><div class="stat">${last?last.weight+' kg':'—'}</div><div class="statlabel">peso attuale</div></div>
@@ -174,7 +180,7 @@ function openExercise(name){
  </div>
  ${last?`<p><span class="pill">${last.sets.map(s=>s.reps+' rep').join(' / ')}</span></p>`:''}
  </div>
- <div class="card"><h3>Storico</h3>${logs.length?`<table class="sets"><tr><th>Data</th><th>Kg</th><th>Ripetizioni</th></tr>${logs.slice().reverse().map(l=>`<tr><td>${dateIt(l.date)}</td><td>${l.weight}</td><td>${l.sets.map(s=>s.reps).join(' / ')}</td></tr>`).join('')}</table>`:'<div class="empty">Nessun allenamento registrato.</div>'}</div>`;
+ <div class="card"><h3>Storico</h3>${logs.length?logs.slice().reverse().map(historyCard).join(''):'<div class="empty">Nessun allenamento registrato.</div>'}</div>`;
  show('exercise');
 }
 function renderSettings(){
@@ -182,7 +188,7 @@ function renderSettings(){
  <button style="width:100%" onclick="exportData()">Esporta backup</button>
  <label style="margin-top:14px">Ripristina backup</label><input type="file" accept=".json" onchange="importData(this)">
  <button class="danger" style="width:100%;margin-top:18px" onclick="resetData()">Cancella tutti i dati</button></div>
- <div class="card"><h3>Versione</h3><div class="muted">Palestra Tracker 2.1 — navigazione storico</div></div>`;
+ <div class="card"><h3>Versione</h3><div class="muted">Palestra Tracker 2.2 — note e modifica storico</div></div>`;
 }
 function exportData(){const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-palestra.json';a.click();}
 function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{db=JSON.parse(r.result);save();alert('Backup ripristinato.');show('home')}catch(e){alert('File non valido.')}};r.readAsText(f);}
